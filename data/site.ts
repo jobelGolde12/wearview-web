@@ -1,64 +1,34 @@
-import type { RetailMetric } from '@/types/wearview-web';
-
 export const primaryRoutes = [
   { href: '/', label: 'Home' },
   { href: '/try-on', label: 'Try on' },
   { href: '/catalog', label: 'Catalog' },
   { href: '/saved', label: 'Saved' },
   { href: '/about', label: 'About' },
-  { href: '/retail', label: 'Retail' },
 ] as const;
 
-export const heroMetrics = [
-  { value: 'Camera', label: 'permission on demand' },
-  { value: 'Upload', label: 'fallback available' },
-  { value: 'Local', label: 'saved look storage' },
+export const heroFacts = [
+  { value: '1 tap', label: 'camera permission request' },
+  { value: 'Client-side', label: 'preview capture and storage' },
+  { value: 'Fallback', label: 'upload mode for any browser' },
 ] as const;
 
-export const landingBullets = [
-  'Browser-first try-on that opens fast on mobile and desktop',
-  'Safe torso guide and privacy messaging built in from the start',
-  'Comparison and save flows for retail browsing and shopping decisions',
-] as const;
-
-export const featureSet = [
+export const homePrinciples = [
   {
-    title: 'Live camera stage',
-    text: 'Camera access is requested only when the user enters try-on mode.',
+    title: 'Clear entry',
+    text: 'Open the showroom, read the brief, and move into try-on without extra explanation.',
   },
   {
-    title: 'Upload fallback',
-    text: 'If camera access is unavailable, the same overlay flow works on a photo.',
+    title: 'Focused preview',
+    text: 'The camera stage stays central; catalog, save, and compare tools stay secondary.',
   },
   {
-    title: 'Saved looks',
-    text: 'Every preview can be stored locally, compared, and deleted.',
-  },
-  {
-    title: 'Retail-ready catalog',
-    text: 'Static garment browsing can later be swapped for a real product feed.',
+    title: 'Private by default',
+    text: 'Camera and uploaded photos remain local unless the user chooses to save a look.',
   },
 ] as const;
 
-export const retailMetrics: RetailMetric[] = [
-  {
-    label: 'Permission conversion',
-    value: '68%',
-    detail: 'Visitor interest after landing on the try-on CTA',
-  },
-  {
-    label: 'Fallback usage',
-    value: '24%',
-    detail: 'Photo-based sessions when camera permissions are declined',
-  },
-  {
-    label: 'Saved previews',
-    value: '12k',
-    detail: 'Mock signal for future analytics and dashboard work',
-  },
-  {
-    label: 'Share intent',
-    value: '41%',
-    detail: 'Users who compare or export at least one look',
-  },
-];
+export const homeSteps = [
+  'Open the site and browse the catalog first.',
+  'Enter try-on only when you want to use the camera or upload a photo.',
+  'Adjust the shirt, save the preview, and compare against earlier looks.',
+] as const;
