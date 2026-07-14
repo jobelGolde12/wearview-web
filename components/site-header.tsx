@@ -67,7 +67,7 @@ export function SiteHeader() {
         <div className="flex items-center gap-2">
           <Link
             href="/try-on"
-            className="inline-flex items-center justify-center rounded-full border border-[var(--line-strong)] bg-[var(--foreground)] px-5 py-2.5 text-sm font-semibold text-[var(--background)] transition hover:-translate-y-0.5 focus-ring"
+            className="inline-flex items-center justify-center rounded-full border border-[var(--line-strong)] bg-[var(--background)] px-5 py-2.5 text-sm font-semibold text-[var(--foreground)] transition hover:-translate-y-0.5 focus-ring"
             onClick={() => setOpen(false)}
           >
             Open try-on
