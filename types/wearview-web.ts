@@ -43,8 +43,28 @@ export type RetailMetric = {
 
 export type FitStatus = 'searching' | 'fit' | 'nofit';
 
+export type TryOnStage = 'FACE' | 'BODY' | 'RESULT';
+
 export type BodyDetectionResult = {
   isFit: boolean;
   confidence: number;
   fitStatus: FitStatus;
+};
+
+export type FaceDetectionResult = {
+  isFit: boolean;
+  confidence: number;
+  landmarks: any;
+  faceBounds: { x: number; y: number; w: number; h: number } | null;
+};
+
+export type BodyAlignmentResult = {
+  isAligned: boolean;
+  confidence: number;
+  landmarks: any;
+};
+
+export type FaceCaptureData = {
+  png: string;
+  bounds: { x: number; y: number; w: number; h: number };
 };

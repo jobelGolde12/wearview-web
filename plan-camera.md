@@ -1,100 +1,428 @@
-# T-Shirt Body Fitting Camera Feature
+# AI Virtual Try-On Camera Feature
 
 ## Goal
-Add a T-shirt shaped overlay to the camera view that detects body fit (green/red outline), and on capture creates a transparent T-shirt cutout so users can visualize store garments on their body.
+
+Transform the current try-on camera into a **two-stage virtual fitting experience**. The user first captures their face using a facial alignment guide, then automatically enters a live body fitting mode where the captured face is attached to a transparent body template. The camera remains active so the user can stand in front of clothing in a mall or store and visualize how shirts, dresses, or other garments align with their body in real time.
+
+---
 
 ## Files to Create
 
-### 1. `components/tshirt-overlay.tsx` — SVG T-shirt shape overlay
-- Responsive SVG using percentage-based coordinates (viewport-relative, not pixel-based)
-- Port the T-shirt path geometry from `src/components/camera/camera-alignment-overlay.tsx` (lines 87-125)
-- Three elements: head circle (dashed), T-shirt body path (dashed stroke + translucent fill), center guide line
-- Props: `fitStatus: 'searching' | 'fit' | 'nofit'` — controls outline color (white=searching, green=fit, red=nofit)
-- CSS animations: pulse glow when fit detected, smooth color transitions
+### 1. `components/face-overlay.tsx`
 
-### 2. `components/smart-capture-button.tsx` — Intelligent shutter button
-- Large circle button with outer ring that pulses green when fit is detected
-- Shows "ALIGN" label (faded) when no fit, "CAPTURE" (bright) when fit detected
-- Props: `isFit: boolean`, `confidence: number`, `onCapture: () => void`, `disabled: boolean`
-- Confidence bar as thin progress line at bottom of button
+A responsive SVG face alignment guide displayed over the live camera.
 
-### 3. `components/alignment-feedback.tsx` — Directional guidance text
-- Shows position guidance below the T-shirt overlay
-- Messages: "Step back", "Move left/right", "Align your shoulders", "Perfect fit detected"
-- Animated text transitions (fade in/out)
-- Props: `message: string`, `isAligned: boolean`
+Features:
 
-### 4. `hooks/use-body-detection.ts` — Canvas pixel analysis for body presence
-- No ML — uses 3-signal approach:
-  1. **Skin-tone HSV detection**: Sample ~200 points in T-shirt torso region, count pixels with H:0-50, S:40-180, V:60-255 (skin range)
-  2. **Edge gradient variance**: Compute Sobel-like gradient magnitude at sample points; high variance = body edges present
-  3. **Color variance**: High RGB variance in torso region = body (vs uniform background)
-- Runs every 5th frame (~100ms at 30fps) to avoid jank
-- Exponential moving average smoothing (α=0.3) to prevent flicker
-- Returns: `{ isFit: boolean; confidence: number }` where confidence is 0-1
-- Accepts `videoRef` and `tshirtRegion` (bounding box of the T-shirt torso area)
+* Large oval/circular face outline
+* Transparent center
+* Dashed border
+* Smooth color transitions
+* Pulse animation when aligned
 
-### 5. `hooks/use-tshirt-shape.ts` — T-shirt geometry computation
-- Computes T-shirt SVG path points relative to viewport dimensions
-- Exports: `getTshirtPath(width, height)`, `getHeadCircle(width, height)`, `getTorsoRegion(width, height)`
-- `getTorsoRegion` returns `{ x, y, w, h }` bounding box for body detection sampling
-- All coordinates are percentage-based for responsiveness
+Props:
 
-### 6. `components/garment-overlay.tsx` — Store garment visualization
-- Overlays a store garment image within the T-shirt area on the captured photo
-- Props: `garmentImage: string`, `tshirtPath: string`, `visible: boolean`
-- Uses SVG `<clipPath>` with the T-shirt shape to clip the garment image
-- Allows user to select different garments from the catalog
+```ts
+fitStatus: 'searching' | 'fit' | 'nofit'
+```
+
+Border colors:
+
+* White = searching
+* Green = aligned
+* Red = not aligned
+
+---
+
+### 2. `hooks/use-face-detection.ts`
+
+Uses **MediaPipe Face Detection / Face Landmarker** to determine whether the user's face correctly fits inside the overlay.
+
+Checks:
+
+* Single face detected
+* Face centered
+* Face size
+* Looking forward
+* Head rotation (yaw, pitch, roll)
+
+Returns:
+
+```ts
+{
+    isFit: boolean;
+    confidence: number;
+    landmarks;
+    faceBounds;
+}
+```
+
+---
+
+### 3. `components/body-overlay.tsx`
+
+Displayed after the face has been captured.
+
+Features:
+
+* Transparent human body outline
+* Head placeholder
+* Shoulder guide
+* Torso guide
+* Waist guide
+* Hip guide
+* Center alignment line
+
+Displays the captured face automatically.
+
+Props:
+
+```ts
+capturedFace
+fitStatus
+cameraFacing
+```
+
+Border colors:
+
+* White
+* Green
+* Red
+
+---
+
+### 4. `hooks/use-body-alignment.ts`
+
+Uses **MediaPipe Pose Landmarker**.
+
+Tracks:
+
+* Shoulders
+* Neck
+* Torso
+* Waist
+* Hips
+* Body center
+* Body rotation
+
+Returns:
+
+```ts
+{
+    isAligned: boolean;
+    confidence: number;
+    landmarks;
+}
+```
+
+---
+
+### 5. `components/live-head-overlay.tsx`
+
+Displays the previously captured face.
+
+Features:
+
+* Cropped transparent PNG
+* Automatically scales
+* Positions above the body template
+* Rotates slightly based on body alignment
+
+---
+
+### 6. `components/garment-preview.tsx`
+
+Displays the selected garment over the live camera.
+
+Features:
+
+* Transparent PNG garments
+* Auto-scale using shoulder width
+* Auto-position using body landmarks
+* Rotation correction
+* Opacity adjustment
+* Manual drag/resize fine tuning
+
+Props:
+
+```ts
+garment
+bodyLandmarks
+visible
+```
+
+---
+
+### 7. `components/smart-capture-button.tsx`
+
+Large capture button.
+
+Features:
+
+* Green pulse when alignment is valid
+* Disabled until alignment succeeds
+* Shows:
+
+  * ALIGN
+  * CAPTURE
+
+Props:
+
+```ts
+isReady
+confidence
+onCapture
+```
+
+---
+
+### 8. `components/alignment-feedback.tsx`
+
+Displays live alignment instructions.
+
+Examples:
+
+* Move left
+* Move right
+* Step back
+* Move closer
+* Straighten your shoulders
+* Perfect alignment
+
+Animated fade transitions.
+
+---
 
 ## Files to Modify
 
 ### `components/try-on-studio.tsx`
-- Import and render `TshirtOverlay` on top of the video feed (replaces the static `div` silhouette)
-- Import `useBodyDetection` hook — pass videoRef and torso region
-- Import `SmartCaptureButton` — replaces the simple shutter button
-- Import `AlignmentFeedback` — shows guidance text
-- Add `fitStatus` and `fitConfidence` state from body detection
-- Modify `capturePhoto()`:
-  - After drawing video frame to canvas, use `globalCompositeOperation: 'destination-out'` to erase the T-shirt interior
-  - Export as PNG (not JPEG) to preserve alpha transparency
-  - The transparent cutout allows garment overlay visualization
-- Add garment overlay state: `selectedGarmentId` for store garment selection
-- Show `GarmentOverlay` component on captured photo when a garment is selected
-- Add garment selector UI (horizontal scroll of garment thumbnails) in captured state
+
+Replace the existing single camera flow with a two-stage workflow.
+
+---
+
+### Stage 1 — Face Capture
+
+Display:
+
+* Live camera
+* Face overlay
+* Face detection
+* Smart capture button
+
+Workflow:
+
+```
+Camera
+
+↓
+
+Face Overlay
+
+↓
+
+Face Detection
+
+↓
+
+Border turns GREEN
+
+↓
+
+Capture button enabled
+
+↓
+
+User taps Capture
+
+↓
+
+Crop only the head
+
+↓
+
+Save transparent PNG
+
+↓
+
+Automatically proceed to Body Stage
+```
+
+Store:
+
+```ts
+capturedFace
+capturedFacePNG
+```
+
+---
+
+### Stage 2 — Live Body Fitting
+
+Keep the camera running.
+
+Display:
+
+* Transparent body outline
+* Captured face attached to body
+* Pose detection
+* Alignment feedback
+* Garment preview
+
+Workflow:
+
+```
+Live Camera
+
+↓
+
+Captured Head
+
+↓
+
+Transparent Body Guide
+
+↓
+
+Pose Detection
+
+↓
+
+Body Alignment
+
+↓
+
+Border turns GREEN
+
+↓
+
+User selects garment
+
+↓
+
+Garment overlays body
+
+↓
+
+Live virtual try-on
+```
+
+The user should be able to stand in front of clothing (such as in a mall) and compare garments against their live body while maintaining camera mode.
+
+---
+
+### Final Capture
+
+Allow the user to capture the completed virtual try-on.
+
+Render:
+
+```
+Live Camera Frame
+
++
+
+Captured Face
+
++
+
+Selected Garment
+
++
+
+Hide UI
+
+↓
+
+Render Canvas
+
+↓
+
+Save PNG
+
+↓
+
+Preview
+
+↓
+
+Share / Download
+```
+
+---
+
+## Types
 
 ### `types/wearview-web.ts`
-- Add `FitStatus = 'searching' | 'fit' | 'nofit'`
-- Add `BodyDetectionResult = { isFit: boolean; confidence: number; fitStatus: FitStatus }`
+
+Add:
+
+```ts
+type FitStatus =
+    | 'searching'
+    | 'fit'
+    | 'nofit';
+
+type FaceDetectionResult = {
+    isFit: boolean;
+    confidence: number;
+};
+
+type BodyAlignmentResult = {
+    isAligned: boolean;
+    confidence: number;
+};
+```
+
+---
+
+## State
+
+```ts
+stage:
+'FACE'
+'BODY'
+'RESULT'
+
+capturedFace
+
+capturedFacePNG
+
+faceConfidence
+
+bodyConfidence
+
+selectedGarment
+
+bodyLandmarks
+
+isFaceAligned
+
+isBodyAligned
+```
+
+---
 
 ## Implementation Order
 
-1. **T-shirt shape** — Create `use-tshirt-shape.ts` and `tshirt-overlay.tsx`, integrate into try-on-studio (replaces static div)
-2. **Body detection** — Create `use-body-detection.ts`, wire up to camera feed, add fit state
-3. **Smart capture** — Create `smart-capture-button.tsx` and `alignment-feedback.tsx`, replace simple shutter
-4. **Capture with cutout** — Modify `capturePhoto()` to create transparent T-shirt cutout using canvas compositing
-5. **Garment overlay** — Create `garment-overlay.tsx`, add garment selector, show on captured photo
+1. Create the responsive **Face Overlay** and integrate it into the live camera.
+2. Implement **MediaPipe Face Detection** and enable capture only when the face correctly fits inside the guide.
+3. Capture and crop the user's head as a transparent PNG, then transition automatically to the Body stage.
+4. Create the transparent **Body Overlay** and integrate **MediaPipe Pose Landmarker** for full-body alignment.
+5. Attach the captured head to the body template and keep the camera running continuously.
+6. Build the **Garment Preview** component to automatically position and scale clothing using detected body landmarks.
+7. Add live alignment feedback and the smart capture button for the body fitting stage.
+8. Implement final rendering by compositing the live camera frame, captured face, and selected garment into a downloadable PNG.
 
-## Capture Flow Detail
-
-```
-User taps capture
-  → canvas draws video frame (with mirror if front camera)
-  → Save the full frame as a temporary image
-  → Set globalCompositeOperation to 'destination-out'
-  → Draw the T-shirt SVG path as a filled shape (erases that region)
-  → Reset composite operation to 'source-over'
-  → The canvas now has: full body photo with T-shirt-shaped transparent hole
-  → Export as PNG with alpha channel
-  → User sees: their body (head, arms, background) with transparent T-shirt area
-  → User can select a store garment → rendered inside the transparent T-shirt area via clipPath
-```
+---
 
 ## Verification
 
-1. Open `/try-on` in browser — camera should auto-start with T-shirt outline visible
-2. Stand in front of camera — outline should turn green when body is positioned correctly, red when not
-3. Tap capture — captured photo should show body with transparent T-shirt cutout
-4. Select a store garment — it should appear within the T-shirt area on the captured photo
-5. Test front/back camera flip — overlay should mirror correctly on front camera
-6. Test on mobile viewport — T-shirt shape should scale responsively
-7. Run `npm run build` — no compilation errors
+1. Open `/try-on` and verify the camera starts on the **Face Alignment** stage.
+2. Ensure the face outline turns **green** only when the user's face is centered, correctly sized, and facing forward.
+3. Capture the face and verify the app automatically transitions to the **Body Alignment** stage.
+4. Confirm the camera remains live and the captured face is attached to the transparent body guide.
+5. Verify the body outline turns **green** only when the user's shoulders, torso, and hips are aligned with the template.
+6. Select a garment and ensure it automatically scales and positions using body landmarks while remaining over the live camera feed.
+7. Capture the final virtual try-on image and verify it contains the live camera frame, captured face, and garment overlay without UI elements.
+8. Test on desktop and mobile, with front and rear cameras, and ensure `npm run build` completes without errors.
