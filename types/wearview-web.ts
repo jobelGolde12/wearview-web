@@ -40,3 +40,11 @@ export type RetailMetric = {
   value: string;
   detail: string;
 };
+
+export type FitStatus = 'searching' | 'fit' | 'nofit';
+
+export type BodyDetectionResult = {
+  isFit: boolean;
+  confidence: number;
+  fitStatus: FitStatus;
+};

@@ -54,7 +54,7 @@ export function SiteHeader() {
                 href={route.href}
                 className={`rounded-full px-4 py-2 text-sm transition focus-ring ${
                   active
-                    ? 'bg-[var(--foreground)] text-[var(--background)]'
+                    ? 'bg-[var(--foreground)] text-black'
                     : 'text-[var(--muted)] hover:bg-[var(--panel-strong)] hover:text-[var(--foreground)]'
                 }`}
               >
@@ -95,7 +95,7 @@ export function SiteHeader() {
                 onClick={() => setOpen(false)}
                 className={`flex items-center justify-between border px-4 py-3 text-sm transition focus-ring ${
                   active
-                    ? 'border-[var(--line-strong)] bg-[var(--foreground)] text-[var(--background)]'
+                    ? 'border-[var(--line-strong)] bg-[var(--foreground)] text-black'
                     : 'border-[var(--line)] bg-[var(--panel)] text-[var(--foreground)]'
                 }`}
               >

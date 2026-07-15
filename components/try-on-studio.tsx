@@ -2,12 +2,27 @@
 
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { type ChangeEvent, useEffect, useRef, useState } from 'react';
+import { type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { garmentById } from '@/data/garments';
+import { useBodyDetection } from '@/hooks/use-body-detection';
+import { getTshirtGeometry } from '@/hooks/use-tshirt-shape';
 import { readJson, writeJson } from '@/lib/storage';
-import type { SavedLook } from '@/types/wearview-web';
+import type { FitStatus, SavedLook } from '@/types/wearview-web';
+import { AlignmentFeedback } from '@/components/alignment-feedback';
+import { GarmentOverlay } from '@/components/garment-overlay';
+import { GarmentSelector } from '@/components/garment-selector';
+import { SmartCaptureButton } from '@/components/smart-capture-button';
+import { TshirtOverlay } from '@/components/tshirt-overlay';
 
 const STORAGE_KEY = 'wearview.savedLooks';
+
+function getGuidanceMessage(fitStatus: FitStatus, confidence: number): string {
+  if (fitStatus === 'fit') return 'Perfect fit detected';
+  if (confidence < 0.1) return 'Step in front of the camera';
+  if (confidence < 0.25) return 'Move closer to the camera';
+  return 'Adjust your position to fit the shirt outline';
+}
 
 export function TryOnStudio() {
   const router = useRouter();
@@ -15,10 +30,30 @@ export function TryOnStudio() {
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
   const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
   const [savedLooks, setSavedLooks] = useState<SavedLook[]>([]);
+  const [selectedGarmentId, setSelectedGarmentId] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const [viewportDims, setViewportDims] = useState({ w: 0, h: 0 });
+
+  // Viewport dimensions for T-shirt shape
+  useEffect(() => {
+    function update() {
+      setViewportDims({ w: window.innerWidth, h: window.innerHeight });
+    }
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
+
+  const tshirtGeo = useMemo(
+    () => (viewportDims.w > 0 ? getTshirtGeometry(viewportDims.w, viewportDims.h) : null),
+    [viewportDims],
+  );
+
+  // Body detection
+  const bodyDetection = useBodyDetection(videoRef, tshirtGeo?.torsoRegion ?? null, cameraState === 'granted' && !capturedPhoto);
 
   useEffect(() => {
     setSavedLooks(readJson<SavedLook[]>(STORAGE_KEY, []));
@@ -82,32 +117,47 @@ export function TryOnStudio() {
     }
   }
 
-  function capturePhoto() {
+  const capturePhoto = useCallback(() => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
     if (!video || !canvas || cameraState !== 'granted') return;
 
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    canvas.width = vw;
+    canvas.height = vh;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    // Draw video frame (mirror if front camera)
     if (facingMode === 'user') {
-      ctx.translate(canvas.width, 0);
+      ctx.translate(vw, 0);
       ctx.scale(-1, 1);
     }
+    ctx.drawImage(video, 0, 0, vw, vh);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-    ctx.drawImage(video, 0, 0);
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+    // Create T-shirt shaped transparent cutout
+    const geo = getTshirtGeometry(vw, vh);
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.beginPath();
+    // Parse and draw the T-shirt path at video dimensions
+    const path = new Path2D(geo.path);
+    ctx.fill(path);
+    ctx.globalCompositeOperation = 'source-over';
+
+    const dataUrl = canvas.toDataURL('image/png');
     setCapturedPhoto(dataUrl);
+    setSelectedGarmentId(null);
     stopCamera();
-  }
+  }, [cameraState, facingMode]);
 
   function retakePhoto() {
     if (capturedPhoto?.startsWith('blob:')) {
       URL.revokeObjectURL(capturedPhoto);
     }
     setCapturedPhoto(null);
+    setSelectedGarmentId(null);
     startCamera();
   }
 
@@ -118,20 +168,22 @@ export function TryOnStudio() {
     stopCamera();
     const url = URL.createObjectURL(file);
     setCapturedPhoto(url);
+    setSelectedGarmentId(null);
     event.target.value = '';
   }
 
   function savePhoto() {
     if (!capturedPhoto) return;
 
+    const garment = selectedGarmentId ? garmentById[selectedGarmentId] : null;
     const look: SavedLook = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       createdAt: new Date().toISOString(),
-      garmentId: '',
-      garmentName: 'Camera capture',
+      garmentId: selectedGarmentId ?? '',
+      garmentName: garment?.name ?? 'Camera capture',
       garmentImage: capturedPhoto,
       mode: 'camera',
-      note: 'Photo captured from camera.',
+      note: garment ? `Tried on ${garment.name} via camera.` : 'Photo captured from camera.',
       previewImage: capturedPhoto,
       overlay: { x: 0, y: 0, scale: 1, rotation: 0, opacity: 1 },
     };
@@ -140,8 +192,11 @@ export function TryOnStudio() {
     setSavedLooks(next);
     writeJson(STORAGE_KEY, next);
     setCapturedPhoto(null);
+    setSelectedGarmentId(null);
     startCamera();
   }
+
+  const selectedGarment = selectedGarmentId ? garmentById[selectedGarmentId] : null;
 
   return (
     <section className="fixed inset-0 flex flex-col bg-black">
@@ -151,7 +206,7 @@ export function TryOnStudio() {
         <button
           type="button"
           onClick={() => router.back()}
-          className="absolute left-4 top-4 z-20 flex h-10 w-10 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur-sm transition hover:bg-black/60 focus-ring"
+          className="absolute left-4 top-4 z-30 flex h-10 w-10 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur-sm transition hover:bg-black/60 focus-ring"
           style={{ top: 'max(1rem, env(safe-area-inset-top))' }}
           aria-label="Go back"
         >
@@ -159,6 +214,8 @@ export function TryOnStudio() {
             <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
           </svg>
         </button>
+
+        {/* Video feed */}
         {cameraState === 'granted' && !capturedPhoto && (
           <video
             ref={videoRef}
@@ -170,6 +227,7 @@ export function TryOnStudio() {
           />
         )}
 
+        {/* Captured photo */}
         {capturedPhoto && (
           <Image
             src={capturedPhoto}
@@ -180,10 +238,17 @@ export function TryOnStudio() {
           />
         )}
 
+        {/* T-shirt overlay (live camera only) */}
         {cameraState === 'granted' && !capturedPhoto && (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-            <div className="h-[70%] w-[55%] rounded-[2rem] border-2 border-white/15" />
-          </div>
+          <TshirtOverlay fitStatus={bodyDetection.fitStatus} />
+        )}
+
+        {/* Garment overlay (captured photo with selected garment) */}
+        {capturedPhoto && selectedGarment && (
+          <GarmentOverlay
+            garmentImage={selectedGarment.image}
+            garmentName={selectedGarment.name}
+          />
         )}
 
         {/* Starting state */}
@@ -216,10 +281,23 @@ export function TryOnStudio() {
             </button>
           </div>
         )}
+
+        {/* Alignment feedback (live camera only) */}
+        {cameraState === 'granted' && !capturedPhoto && (
+          <AlignmentFeedback
+            message={getGuidanceMessage(bodyDetection.fitStatus, bodyDetection.confidence)}
+            isAligned={bodyDetection.isFit}
+          />
+        )}
       </div>
 
       <canvas ref={canvasRef} className="hidden" />
       <input ref={fileInputRef} type="file" accept="image/*" onChange={handleUpload} className="hidden" />
+
+      {/* Garment selector (captured photo only) */}
+      {capturedPhoto && (
+        <GarmentSelector selectedId={selectedGarmentId} onSelect={setSelectedGarmentId} />
+      )}
 
       {/* Bottom Controls */}
       <div className="relative z-10 flex items-center justify-around bg-black/80 px-8 pt-4 backdrop-blur-lg" style={{ paddingBottom: 'max(2rem, env(safe-area-inset-bottom))' }}>
@@ -261,16 +339,13 @@ export function TryOnStudio() {
               </svg>
             </button>
 
-            {/* Shutter */}
-            <button
-              type="button"
-              onClick={capturePhoto}
+            {/* Smart Capture Button */}
+            <SmartCaptureButton
+              isFit={bodyDetection.isFit}
+              confidence={bodyDetection.confidence}
+              onCapture={capturePhoto}
               disabled={cameraState !== 'granted'}
-              className="flex h-[4.5rem] w-[4.5rem] items-center justify-center rounded-full border-[3px] border-white/90 p-1 transition active:scale-95 disabled:border-white/30 focus-ring"
-              aria-label="Capture photo"
-            >
-              <span className="block h-full w-full rounded-full bg-white transition" />
-            </button>
+            />
 
             {/* Flip Camera */}
             <button
